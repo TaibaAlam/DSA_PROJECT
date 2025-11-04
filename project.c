@@ -7,98 +7,156 @@ typedef struct Job
     int jobId;
     int pages;
     int priority;
-    struct Job *next;
 } Job;
 
-Job *createJob(int jobId, int pages)
+typedef struct MinHeap
+{
+    Job **jobs;
+    int size;  
+    int capacity; 
+} MinHeap;
+
+
+Job *createJob(int jobId, int pages, int priority)
 {
     Job *newjob = (Job *)malloc(sizeof(Job));
     newjob->jobId = jobId;
     newjob->pages = pages;
-    newjob->priority = pages;
-    newjob->next = NULL;
+    newjob->priority = priority; // Priority is now from user input
     return newjob;
 }
 
-void enqueue(Job **front, int jobId, int pages)
+
+MinHeap *createMinHeap(int capacity)
 {
-    Job *newJob = createJob(jobId, pages);
-
-    if ((*front) == NULL || newJob->priority < (*front)->priority)
-    {
-        newJob->next = (*front);
-        (*front) = newJob;
-    }
-    else
-    {
-        Job *temp = (*front);
-        while (temp->next != NULL && temp->next->priority <= newJob->priority)
-        {
-            temp = temp->next;
-        }
-        newJob->next = temp->next;
-        temp->next = newJob;
-    }
-
-    printf("Job %d with %d pages added to queue.\n", jobId, pages);
-    // return front;
+    MinHeap *heap = (MinHeap *)malloc(sizeof(MinHeap));
+    heap->jobs = (Job **)malloc(capacity * sizeof(Job *));
+    heap->size = 0;
+    heap->capacity = capacity;
+    return heap;
 }
 
-void dequeue(Job **front)
+
+void swapJobs(Job **a, Job **b)
 {
-    if ((*front) == NULL)
+    Job *temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+
+void heapifyUp(MinHeap *heap, int index)
+{
+    int parent = (index - 1) / 2;
+    while (index > 0 && heap->jobs[index]->priority < heap->jobs[parent]->priority)
     {
-        printf("⚠  No jobs to process.\n");
-        return NULL;
+        swapJobs(&heap->jobs[index], &heap->jobs[parent]);
+        index = parent;
+        parent = (index - 1) / 2;
+    }
+}
+
+
+void heapifyDown(MinHeap *heap, int index)
+{
+    int smallest = index;
+    int leftChild = 2 * index + 1;
+    int rightChild = 2 * index + 2;
+
+    if (leftChild < heap->size && heap->jobs[leftChild]->priority < heap->jobs[smallest]->priority)
+    {
+        smallest = leftChild;
     }
 
-    Job *temp = (*front);
-    (*front) = (*front)->next;
-
-    printf("\nProcessing Job ID: %d (%d pages)\n", temp->jobId, temp->pages);
-    for (int i = 1; i <= temp->pages; i++)
+    if (rightChild < heap->size && heap->jobs[rightChild]->priority < heap->jobs[smallest]->priority)
     {
-        printf("   Page %d printed.\n", i);
+        smallest = rightChild;
+    }
+
+    if (smallest != index)
+    {
+        swapJobs(&heap->jobs[index], &heap->jobs[smallest]);
+        heapifyDown(heap, smallest);
+    }
+}
+
+
+void insertJob(MinHeap *heap, int jobId, int pages, int priority)
+{
+    if (heap->size == heap->capacity)
+    {
+        printf("Printer queue is full. Cannot add job.\n");
+        return;
+    }
+
+    Job *newJob = createJob(jobId, pages, priority);
+    heap->jobs[heap->size] = newJob;
+    int currentIndex = heap->size;
+    heap->size++;
+
+    heapifyUp(heap, currentIndex);
+
+    printf("Job %d with %d pages and priority %d added to queue.\n", jobId, pages, priority);
+}
+
+
+void processNextJob(MinHeap *heap)
+{
+    if (heap->size == 0)
+    {
+        printf("No jobs to process.\n");
+        return;
+    }
+
+    Job *jobToProcess = heap->jobs[0];
+    heap->jobs[0] = heap->jobs[heap->size - 1];
+    heap->size--;
+
+    heapifyDown(heap, 0);
+    printf("\nProcessing Job ID: %d (Pages: %d, Priority: %d)\n",jobToProcess->jobId, jobToProcess->pages, jobToProcess->priority);
+
+    for (int i = 1; i <= jobToProcess->pages; i++)
+    {
+        printf("    Page %d printed.\n", i);
         sleep(1);
     }
-    printf("Job %d completed.\n", temp->jobId);
-    free(temp);
-
-    // return front;
+    printf("Job %d completed.\n", jobToProcess->jobId);
+    free(jobToProcess);
 }
 
-void displayQueue(Job *front)
+
+void displayHeap(MinHeap *heap)
 {
-    if (front == NULL)
+    if (heap->size == 0)
     {
         printf("No jobs in queue.\n");
         return;
     }
 
-    printf("\nCurrent Printer Queue (Sorted by Fewest Pages First):\n");
+    printf("\nCurrent Printer Queue:\n");
     printf("----------------------------------\n");
     printf("Job ID\t|Pages\t|Priority\n");
-
-    Job *temp = front;
-    while (temp != NULL)
+    
+    for (int i = 0; i < heap->size; i++)
     {
-        printf(" %d\t| %d\t| %d\n", temp->jobId, temp->pages, temp->priority);
-        temp = temp->next;
+        printf(" %d\t| %d\t| %d\n",
+               heap->jobs[i]->jobId, heap->jobs[i]->pages, heap->jobs[i]->priority);
     }
 }
 
+
 int main()
 {
-    Job *front = NULL;
-    int choice, jobId, pages;
+    MinHeap *heap = createMinHeap(100);
+    int choice, jobId, pages, priority;
 
-    printf("Printer Job Scheduler using Priority Queue:\n");
+    printf("Printer Job Scheduler using Min-Heap:\n");
 
     while (1)
     {
         printf("\n1. Add Print Job");
-        printf("\n2. Process Next Job");
-        printf("\n3. Display All Jobs");
+        printf("\n2. Process Next Job (Highest Priority)");
+        printf("\n3. Display All Jobs (Heap View)");
         printf("\n4. Exit");
         printf("\nEnter your choice: ");
         scanf("%d", &choice);
@@ -110,21 +168,27 @@ int main()
             scanf("%d", &jobId);
             printf("Enter Number of Pages: ");
             scanf("%d", &pages);
-            enqueue(&front, jobId, pages);
+            printf("Enter Priority (lower number = higher priority): ");
+            scanf("%d", &priority);
+            insertJob(heap, jobId, pages, priority);
             break;
 
         case 2:
-            dequeue(&front);
+            processNextJob(heap);
             break;
 
         case 3:
-            displayQueue(front);
+            displayHeap(heap);
             break;
 
         case 4:
             printf("\nExiting Printer Job Scheduler...\n");
-            while (front != NULL)
-                dequeue(&front);
+            while (heap->size > 0)
+            {
+                processNextJob(heap);
+            }
+            free(heap->jobs);
+            free(heap);
             exit(0);
 
         default:
